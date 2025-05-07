@@ -2,45 +2,37 @@ import random
 import pygame
 from pygame import Rect, key
 from Character import Character
+from Button import Button
 
 from MazeGenerator import MazeGenerator
 pygame.init()
 pygame.display.set_caption("Maze Game")
 clock = pygame.time.Clock()
 running = True
-
 length=25
-size=25
+size=10
 maze=MazeGenerator(size,length)
 character=Character(maze,0,0)
+#DIMENSIONS
 screenWidth = maze.width + 200
 screenHeight = maze.width + 70
 screen = pygame.display.set_mode((screenWidth, screenHeight))
-
-   # character.animate(screen)
-#DIMENSIONS
-
-screenWidth=maze.width+200
-screenHeight=maze.width+70
-screen = pygame.display.set_mode((screenWidth, screenHeight))
-
-
-#character=pygame.draw.rect(screen,(255,255,255),(0,0,length,length),0)
 font=pygame.font.Font('freesansbold.ttf',20)
-text=font.render("Welcome to our maze game!", True, (0,0,0))
-
-
 #BUTTONS
-buttonSolveBFS=pygame.draw.rect(screen, (255, 255, 255), pygame.Rect(maze.width + 5, 30, 190, 50))
-buttonTryAgain=pygame.draw.rect(screen, (255, 255, 255), pygame.Rect(maze.width + 5, 85, 190, 50))
-buttonGenerateDFS=pygame.draw.rect(screen, (255, 255, 255), pygame.Rect(maze.width + 5, 140, 190, 50))
-buttonGenerateBFS=pygame.draw.rect(screen, (255, 255, 255), pygame.Rect(maze.width+5, 195, 190, 50))
+generateMazeDFS=Button(screen,maze.width+5,10,"Generate Maze: DFS")
+solveBFS=Button(screen,maze.width+5,45,"Solve Maze: BFS")
+reset=Button(screen,maze.width+5,80,"Reset Maze")
+solveAstar=Button(screen,maze.width+5,115,"Solve Maze: A star")
+solveDFS=Button(screen,maze.width+5,150,"Solve Maze: DFS")
+#MESSAGES
+win_msg = font.render("You Won!", True, "Black")
 
 def drawGridPath():
     pygame.draw.line(screen,"red",(length/2,0),(length/2,length/2), 5)
     for y in range(size):
         for x in range (size):
             drawLink(maze.grid[x][y])
+
 def drawLink(cell):
     x=cell.x
     y=cell.y
@@ -55,6 +47,7 @@ def drawGrid():
     for y in range(size):
         for x in range (size):
             drawCell(maze.grid[x][y])
+
 def drawCell(cell):
     x=cell.x
     y=cell.y
@@ -71,48 +64,86 @@ def drawCell(cell):
 
 
 def generateNewMaze(maze):
-
     maze.resetMaze()
     maze.DFS()
 
 
-maze.resetMaze()
 dfs = maze.DFS()
 bfs = None
-phase = "dfs"
+phase = ""
+dfs_done = False
+bfs_done = False
+won=False
 while running:
+    screen.fill("grey")  # Clear screen
+
     for event in pygame.event.get():
-        if event.type == pygame.QUIT:
+        if event.type == pygame.QUIT: #if user clicks on the X
             running = False
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if generateMazeDFS.isClicked():
+                maze.resetMaze() #resets maze to original gird
+                dfs = maze.DFS() #calls the function and "yield" stops when a wall gets removed
+                dfs_done = False #since we are starting a new dfs maze, set dfs_done to false, this ensures that player cant move yet and that bfs wont run yet
+                character.reset() #return character to start position
+                won = False #set won to false since we are JUST starting a new maze
+                phase = "dfs" #set phase to dfs, since we are currently generating
 
-    keys = pygame.key.get_pressed()
-    character.characterMovement(keys, maze)
+            elif solveBFS.isClicked() and dfs_done : #if user wants to solve with BFS AND the dfs generation is done a\
+                bfs = maze.BFS() #calls the method for the first time and yield causes it to return once a link is created between two cells
+                phase = "bfs"
 
-    # Maze generation phases
-    if phase == "dfs":
+            elif reset.isClicked():
+                phase = "reset"
+
+
+
+    keys = pygame.key.get_pressed() #returns a list of keys with t or f for each key indicating if it is pressed rn
+
+
+    if phase == "dfs": #this is true when you click the generateMazeDFS button
         try:
-            next(dfs)
-        except StopIteration:
-            bfs = maze.BFS()
-            phase = "bfs"
-    elif phase == "bfs":
+            next(dfs) #runs the next iteration of DFS generator method till a wall is removed then returns (when it returns it runs through the rest of the code and renders this on the screen then goes through the condition again, removed next wall, and so on till the stack is empty and method/generator  stops)
+        except StopIteration: #if the stack is empty, the DFS generation method ended
+            dfs_done = True #dfs_done is true now, now the player can move
+            phase = "idle"  # set phase to idle which just waits for controls
+
+    elif phase == "bfs" : #same as dfs generator
         try:
             next(bfs)
         except StopIteration:
-            phase = "done"
+            phase = "idle"
+    elif phase=="reset":
+        maze.resetMaze()
+        dfs = maze.DFS()
+        bfs = None
+        dfs_done = False
+        character.reset()
+        won = False
+        phase = "idle"
+    elif phase=="idle":
+        if not won and dfs_done:  # character can move ONLY when dfs is done and when they did not win yet
+            character.characterMovement(keys, maze)  # this method processes movement of character
+            won = character.mazeSolved(maze)  # as player keeps moving, keep checking whether they won yet, if they did the condition will break, they wint be able to move.
+        elif won:
+            # if the user won, draw win msg
+            character.resetDirections()
+            screen.blit(win_msg, (screenWidth / 2 - 50, maze.width + 20))
 
-    # --- DRAWING SECTION ---
-    screen.fill("grey")  # Clear screen before drawing
+    #drawing buttons
+    generateMazeDFS.drawButton(screen)
+    solveBFS.drawButton(screen)
+    reset.drawButton(screen)
+    solveAstar.drawButton(screen)
+    solveDFS.drawButton(screen)
+    drawGrid()#draw grid
 
-    screen.blit(text, (screenWidth - 195, 10))  # Draw welcome text
 
-    drawGrid()  # Draw maze walls
-    if phase in ("bfs", "done"):
-        drawGridPath()  # Draw path if solving is finished or in BFS
+   # if phase in ("bfs", "bfs_done"):   useless line
+    drawGridPath()#draws maze solution
+    character.animate(screen)#draw character
 
-    character.animate(screen)  # Draw character sprite
+    pygame.display.update()#updates screen each frame
 
-    pygame.display.update()  # Refresh the display
-    clock.tick(27)  # Cap FPS
-
+    clock.tick(27)
 pygame.quit()
